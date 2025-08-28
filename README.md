@@ -1,10 +1,10 @@
-# Ozon FBS Analytics Dashboard
+# Ozon FBS Аналитический Дашборд
 
-## 🎯 **Overview**
+## 🎯 **Обзор**
 
-A comprehensive, modular web dashboard for Ozon FBS (Fulfilled By Seller) sales analytics. The dashboard provides real-time insights into sales performance, financial metrics, product analytics, regional performance, and detailed transaction tracking.
+Модульный веб-дашборд для аналитики продаж Ozon FBS (Fulfilled By Seller). Дашборд предоставляет оперативные и исторические данные по продажам, финансовым метрикам, аналитике по товарам, региональной активности и детализации транзакций.
 
-## ✨ **Features**
+## ✨ **Особенности**
 
 ### 📊 **Sales Analytics**
 - Interactive daily sales charts with GMV/Orders/Units views
