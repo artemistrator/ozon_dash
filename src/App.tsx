@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -9,6 +9,12 @@ import { ProductsPage } from './pages/ProductsPage';
 import { RegionsPage } from './pages/RegionsPage';
 import { FinancePage } from './pages/FinancePage';
 import { TransactionsPage } from './pages/TransactionsPage';
+
+// Component to handle redirect with preserved search params
+const RedirectToSales: React.FC = () => {
+  const location = useLocation();
+  return <Navigate to={`/sales${location.search}`} replace />;
+};
 
 // Create a client
 const queryClient = new QueryClient({
@@ -45,7 +51,7 @@ function App() {
             />
             <Routes>
               <Route path="/" element={<AppLayout />}>
-                <Route index element={<Navigate to="/sales" replace />} />
+                <Route index element={<RedirectToSales />} />
                 <Route path="sales" element={<SalesPage />} />
                 <Route path="products" element={<ProductsPage />} />
                 <Route path="regions" element={<RegionsPage />} />

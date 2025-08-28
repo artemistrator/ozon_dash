@@ -1,5 +1,5 @@
 import React from 'react';
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import { 
   TrendingUp, 
   Package, 
@@ -25,8 +25,15 @@ const navigation = [
 
 export const AppLayout: React.FC = () => {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+
+  // Function to preserve current filter parameters when navigating
+  const getNavigationUrl = (href: string) => {
+    const currentParams = searchParams.toString();
+    return currentParams ? `${href}?${currentParams}` : href;
+  };
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
@@ -69,7 +76,7 @@ export const AppLayout: React.FC = () => {
               return (
                 <NavLink
                   key={item.name}
-                  to={item.href}
+                  to={getNavigationUrl(item.href)}
                   className={`
                     group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors
                     ${isActive 

@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { getDefaultDateRange, formatMoscowDate, toMoscowTime } from '../lib/date-utils';
 
 export interface Filters {
@@ -12,6 +12,18 @@ export interface Filters {
 
 export const useFilters = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Initialize URL with default date range if no parameters exist
+  useEffect(() => {
+    const hasDateParams = searchParams.has('from') || searchParams.has('to');
+    if (!hasDateParams) {
+      const defaultRange = getDefaultDateRange();
+      const params = new URLSearchParams(searchParams);
+      params.set('from', formatMoscowDate(defaultRange.from));
+      params.set('to', formatMoscowDate(defaultRange.to));
+      setSearchParams(params, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const filters = useMemo((): Filters => {
     const defaultRange = getDefaultDateRange();
