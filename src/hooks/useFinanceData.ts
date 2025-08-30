@@ -47,53 +47,87 @@ export const useFinanceData = () => {
   return useQuery({
     queryKey: ['finance', filters],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_finance_summary', {
-        start_date: formatMoscowDate(filters.dateFrom),
-        end_date: formatMoscowDate(filters.dateTo),
-        sku_filter: filters.sku ? parseInt(filters.sku) : null,
-        region_filter: filters.region || null,
+      // Get revenue data from postings table
+      let revenueQuery = supabase
+        .from('postings')
+        .select('price, qty, payout, commission_product, raw')
+        .neq('status', 'cancelled');
+      
+      // Apply date filtering based on dateType using raw JSON data
+      const dateColumn = filters.dateType;
+      const startDate = formatMoscowDate(filters.dateFrom);
+      const endDate = formatMoscowDate(filters.dateTo);
+      
+      if (filters.sku) {
+        revenueQuery = revenueQuery.eq('sku', parseInt(filters.sku));
+      }
+      
+      const { data: revenueData, error: revenueError } = await revenueQuery;
+      if (revenueError) throw revenueError;
+      
+      // Filter by date using raw JSON data and calculate totals
+      const filteredData = (revenueData || []).filter(item => {
+        if (!item.raw) return false;
+        const dateValue = item.raw[dateColumn];
+        if (!dateValue) return false;
+        const itemDate = new Date(dateValue).toISOString().split('T')[0];
+        return itemDate >= startDate && itemDate <= endDate;
       });
-
-      if (error) throw error;
-
-      // Transform data into summary
-      const summary: FinanceSummary = {
-        sales: 0,
-        commissions: 0,
-        delivery: 0,
-        returns: 0,
-        ads: 0,
-        services: 0,
-        totalIncome: 0,
-        totalExpenses: 0,
-        netProfit: 0,
-      };
-
-      // Process the RPC results
-      (data || []).forEach((item: any) => {
-        const amount = toNumber(item.amount);
-        const category = item.category as keyof typeof summary;
+      
+      // Get service costs from transactions table
+      const { data: serviceData, error: serviceError } = await supabase
+        .from('transactions')
+        .select('amount, operation_type_name')
+        .gte('operation_date', startDate)
+        .lte('operation_date', endDate);
         
-        if (category in summary) {
-          summary[category] = amount;
+      if (serviceError) throw serviceError;
+      
+      // Calculate summary from real data
+      const totalRevenue = filteredData.reduce((sum, item) => {
+        return sum + (toNumber(item.price) * (item.qty || 1));
+      }, 0);
+      
+      const totalPayout = filteredData.reduce((sum, item) => {
+        return sum + toNumber(item.payout);
+      }, 0);
+      
+      const totalCommissions = filteredData.reduce((sum, item) => {
+        return sum + Math.abs(toNumber(item.commission_product));
+      }, 0);
+      
+      // Calculate service costs by category
+      let deliveryCosts = 0;
+      let otherServiceCosts = 0;
+      
+      (serviceData || []).forEach(item => {
+        const amount = Math.abs(toNumber(item.amount));
+        if (item.operation_type_name?.toLowerCase().includes('delivery') || 
+            item.operation_type_name?.includes('доставка')) {
+          deliveryCosts += amount;
+        } else {
+          otherServiceCosts += amount;
         }
       });
-
-      // Calculate totals
-      summary.totalIncome = summary.sales;
-      summary.totalExpenses = Math.abs(summary.commissions) + 
-                            Math.abs(summary.delivery) + 
-                            Math.abs(summary.returns) + 
-                            Math.abs(summary.ads) + 
-                            Math.abs(summary.services);
-      summary.netProfit = summary.totalIncome - summary.totalExpenses;
+      
+      const summary: FinanceSummary = {
+        sales: totalRevenue,
+        commissions: totalCommissions,
+        delivery: deliveryCosts,
+        returns: 0, // No returns data in current structure
+        ads: 0, // No ads data in current structure
+        services: otherServiceCosts,
+        totalIncome: totalRevenue,
+        totalExpenses: totalCommissions + deliveryCosts + otherServiceCosts,
+        netProfit: totalPayout,
+      };
 
       // Create categories array for pie chart (excluding zero values)
       const categories: FinanceCategory[] = [];
       const total = summary.totalIncome + summary.totalExpenses;
       
       Object.entries(summary).forEach(([key, value]) => {
-        if (key in CATEGORY_COLORS && value !== 0) {
+        if (key in CATEGORY_COLORS && value > 0) {
           const amount = key === 'sales' ? value : Math.abs(value);
           categories.push({
             category: CATEGORY_LABELS[key as keyof typeof CATEGORY_LABELS],
@@ -119,39 +153,28 @@ export const useFinanceBreakdown = () => {
   return useQuery({
     queryKey: ['financeBreakdown', filters],
     queryFn: async () => {
-      let query = supabase
-        .from('vw_finance_breakdown')
+      // Get financial breakdown from transactions table
+      const { data, error } = await supabase
+        .from('transactions')
         .select('*')
-        .gte('date_msk', formatMoscowDate(filters.dateFrom))
-        .lte('date_msk', formatMoscowDate(filters.dateTo))
-        .order('date_msk', { ascending: false });
-
-      if (filters.region) {
-        // Join with postings to filter by region
-        const { data: postings } = await supabase
-          .from('postings_fbs')
-          .select('posting_number')
-          .ilike('cluster_to', `%${filters.region}%`);
-        
-        if (postings && postings.length > 0) {
-          const postingNumbers = postings.map(p => p.posting_number);
-          query = query.in('posting_number', postingNumbers);
-        }
-      }
-
-      const { data, error } = await query.limit(100);
+        .gte('operation_date', formatMoscowDate(filters.dateFrom))
+        .lte('operation_date', formatMoscowDate(filters.dateTo))
+        .order('operation_date', { ascending: false })
+        .limit(100);
       
       if (error) throw error;
 
       return (data || []).map(item => ({
-        ...item,
-        sales: toNumber(item.sales),
-        commissions: toNumber(item.commissions),
-        delivery: toNumber(item.delivery),
-        returns: toNumber(item.returns),
-        ads: toNumber(item.ads),
-        services: toNumber(item.services),
-        net_profit: toNumber(item.net_profit),
+        date_msk: formatMoscowDate(new Date(item.operation_date)),
+        posting_number: item.posting_number || 'N/A',
+        sales: 0, // No sales data in transactions
+        commissions: 0,
+        delivery: item.operation_type_name?.toLowerCase().includes('delivery') ? Math.abs(toNumber(item.amount)) : 0,
+        returns: 0,
+        ads: 0,
+        services: !item.operation_type_name?.toLowerCase().includes('delivery') ? Math.abs(toNumber(item.amount)) : 0,
+        net_profit: toNumber(item.amount) || 0,
+        operation_type: item.operation_type_name,
       }));
     },
     enabled: !!filters.dateFrom && !!filters.dateTo,
